@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "open-rag-pipeline"
+version = "0.1.0"
+description = "Scalable, open-source document ingestion and vectorization system"
+authors = [
+    {name = "Shakir", email = "shakirsadiq24@gmail.ai"},
+]
+requires-python = ">=3.10"
+dependencies = [
+    "langchain>=0.1.0",
+    "langchain-core>=0.1.0",
+    "langchain-community>=0.0.20",
+    "langchain-openai>=0.0.5",
+    "langchain-text-splitters>=0.0.1",
+    "pydantic>=2.0.0",
+    "click>=8.0.0",
+    "python-dotenv>=1.0.0",
+    "tqdm>=4.65.0",
+    "pypdf>=3.0.0",
+    "python-docx>=1.0.0",
+    "beautifulsoup4>=4.12.0",
+    "cohere>=4.40,<5.0.0",
+    "environs>=14.5.0",
+    "rich>=14.0.0",
+    "more-itertools>=8.0.0",  # Pin to avoid old incompatible versions
+]
+
+[project.optional-dependencies]
+milvus = [
+    "langchain-milvus>=0.1.0",
+    "pymilvus>=2.3.0",
+]
+chroma = [
+    "langchain-chroma>=0.1.0",
+    "chromadb>=0.5.0",  # Version 0.5+ supports pydantic 2.0
+]
+qdrant = [
+    "langchain-qdrant>=0.1.0",
+    "qdrant-client>=1.7.0",
+]
+local-embeddings = [
+    "sentence-transformers>=2.2.0",
+]
+all = [
+    "open-rag-pipeline[milvus]",
+    "open-rag-pipeline[chroma]",
+    "open-rag-pipeline[qdrant]",
+    "open-rag-pipeline[local-embeddings]",
+]
+
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "ruff>=0.3.0",
+]
+
+[project.scripts]
+open-rag = "open_rag_pipeline.cli.commands:cli"
+
+[tool.setuptools.packages.find]
+include = ["open_rag_pipeline*"]
+exclude = ["tests*", "__pycache__*"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["open_rag_pipeline"]
+
