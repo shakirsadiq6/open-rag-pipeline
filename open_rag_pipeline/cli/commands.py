@@ -158,7 +158,8 @@ def _create_config_from_options(
 @click.option("--chunk-size", default=1000, type=int, help="Chunk size")
 @click.option("--chunk-overlap", default=200, type=int, help="Chunk overlap")
 @click.option("--batch-size", default=100, type=int, help="Batch size for processing")
-@click.option("--recursive", is_flag=True, default=True, help="Recursively process directories")
+@click.option("--force", is_flag=True, help="Force ingestion even if files haven't changed")
+@click.option("--no-recursive", "recursive", is_flag=False, default=True, help="Do not process directories recursively")
 @click.pass_context
 def ingest(
     ctx,
@@ -170,6 +171,7 @@ def ingest(
     chunk_overlap: int,
     batch_size: int,
     recursive: bool,
+    force: bool,
 ):
     """Ingest documents into vector store."""
     try:
@@ -212,12 +214,15 @@ def ingest(
                 input,
                 recursive=recursive,
                 show_progress=True,
+                force=force,
             )
             console.print(f"[green]✓ Processing complete[/green]")
             console.print(f"  Files processed: {stats['files_processed']}")
             console.print(f"  Documents loaded: {stats['documents_loaded']}")
             console.print(f"  Chunks created: {stats['chunks_created']}")
             console.print(f"  Chunks stored: {stats['chunks_stored']}")
+            if stats.get("skipped"):
+                console.print(f"  Files skipped (unchanged): {stats['skipped']}")
             if stats["errors"]:
                 console.print(f"[red]  Errors: {len(stats['errors'])}[/red]")
                 for error in stats["errors"][:5]:  # Show first 5 errors
@@ -364,6 +369,150 @@ def status(collection: str, embedding_provider: str, vector_store: str):
     except Exception as e:
         console.print(f"[red]Error: {str(e)}[/red]")
         logger.exception("Status check failed")
+        raise click.Abort()
+
+
+@cli.group()
+def collections():
+    """Manage vector store collections."""
+    pass
+
+
+@collections.command(name="list")
+@click.option(
+    "--embedding-provider",
+    default="openai",
+    type=click.Choice(["openai", "cohere", "local"]),
+    help="Embedding provider",
+)
+@click.option(
+    "--vector-store",
+    default="milvus",
+    type=click.Choice(["milvus", "chroma", "qdrant"]),
+    help="Vector store backend",
+)
+def list_collections(embedding_provider: str, vector_store: str):
+    """List all collections."""
+    try:
+        config = _create_config_from_options(
+            embedding_provider=embedding_provider,
+            vector_store=vector_store,
+            chunk_size=1000,
+            chunk_overlap=200,
+        )
+        # We need a dummy collection name to initialize the store
+        from open_rag_pipeline.vector_stores.factory import create_vector_store
+        from open_rag_pipeline.embeddings.factory import create_embedding
+
+        embedding = create_embedding(config.embedding)
+        store = create_vector_store(config.vector_store, embedding, "dummy")
+        
+        collections = store.list_collections()
+        
+        if not collections:
+            console.print("[yellow]No collections found.[/yellow]")
+            return
+
+        console.print(f"\n[bold green]Collections ({vector_store}):[/bold green]\n")
+        for col in collections:
+            if col != "dummy":
+                console.print(f"  - {col}")
+
+    except Exception as e:
+        console.print(f"[red]Error: {str(e)}[/red]")
+        raise click.Abort()
+
+
+@collections.command(name="delete")
+@click.option("--name", "-n", required=True, help="Collection name to delete")
+@click.option(
+    "--embedding-provider",
+    default="openai",
+    type=click.Choice(["openai", "cohere", "local"]),
+    help="Embedding provider",
+)
+@click.option(
+    "--vector-store",
+    default="milvus",
+    type=click.Choice(["milvus", "chroma", "qdrant"]),
+    help="Vector store backend",
+)
+def delete_collection(name: str, embedding_provider: str, vector_store: str):
+    """Delete a collection."""
+    if not click.confirm(f"Are you sure you want to delete collection '{name}'?"):
+        return
+
+    try:
+        config = _create_config_from_options(
+            embedding_provider=embedding_provider,
+            vector_store=vector_store,
+            chunk_size=1000,
+            chunk_overlap=200,
+        )
+        from open_rag_pipeline.vector_stores.factory import create_vector_store
+        from open_rag_pipeline.embeddings.factory import create_embedding
+
+        embedding = create_embedding(config.embedding)
+        store = create_vector_store(config.vector_store, embedding, name)
+        
+        if store.delete_collection(name):
+            console.print(f"[green]✓ Collection '{name}' deleted successfully[/green]")
+        else:
+            console.print(f"[red]Failed to delete collection '{name}'[/red]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {str(e)}[/red]")
+        raise click.Abort()
+
+
+@cli.command()
+@click.option("--collection", "-c", required=True, help="Collection name")
+@click.option(
+    "--embedding-provider",
+    default="openai",
+    type=click.Choice(["openai", "cohere", "local"]),
+    help="Embedding provider",
+)
+@click.option(
+    "--vector-store",
+    default="milvus",
+    type=click.Choice(["milvus", "chroma", "qdrant"]),
+    help="Vector store backend",
+)
+def chat(collection: str, embedding_provider: str, vector_store: str):
+    """Interactive chat mode for querying."""
+    try:
+        config = _create_config_from_options(
+            embedding_provider=embedding_provider,
+            vector_store=vector_store,
+            chunk_size=1000,
+            chunk_overlap=200,
+        )
+        query_pipeline = QueryPipeline(config, collection)
+        
+        console.print(f"[bold green]Entering interactive chat mode for collection: {collection}[/bold green]")
+        console.print("Type 'exit' or 'quit' to leave.\n")
+
+        while True:
+            query_str = click.prompt("Query")
+            if query_str.lower() in ["exit", "quit"]:
+                break
+            
+            results = query_pipeline.search(query_str, k=3)
+            
+            if not results:
+                console.print("[yellow]No relevant documents found.[/yellow]\n")
+                continue
+
+            console.print(f"\n[bold]Results:[/bold]")
+            for idx, doc in enumerate(results, 1):
+                source = doc.metadata.get("source", "Unknown")
+                console.print(f"[cyan][{idx}] Source: {source}[/cyan]")
+                console.print(f"{doc.page_content[:200]}...")
+            console.print("\n")
+
+    except Exception as e:
+        console.print(f"[red]Error: {str(e)}[/red]")
         raise click.Abort()
 
 

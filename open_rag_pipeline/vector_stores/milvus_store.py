@@ -161,6 +161,36 @@ class MilvusStore(VectorStoreInterface):
             logger.warning(f"Failed to get Milvus stats: {str(e)}")
             return {"collection_name": self.collection_name, "num_entities": "unknown"}
 
+    def list_collections(self) -> List[str]:
+        """
+        List all collections in Milvus.
+
+        Returns:
+            List of collection names
+        """
+        try:
+            from pymilvus import utility
+            return utility.list_collections()
+        except Exception as e:
+            raise VectorStoreError(f"Failed to list Milvus collections: {str(e)}") from e
+
+    def delete_collection(self, collection_name: str) -> bool:
+        """
+        Delete a collection from Milvus.
+
+        Args:
+            collection_name: Name of the collection to delete
+
+        Returns:
+            True if successful
+        """
+        try:
+            from pymilvus import utility
+            utility.drop_collection(collection_name)
+            return True
+        except Exception as e:
+            raise VectorStoreError(f"Failed to delete Milvus collection {collection_name}: {str(e)}") from e
+
     def _build_milvus_expression(self, filter: Dict[str, Any]) -> Optional[str]:
         """
         Build Milvus expression string from filter dict.

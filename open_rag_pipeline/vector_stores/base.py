@@ -74,6 +74,29 @@ class VectorStoreInterface(ABC):
         pass
 
     @abstractmethod
+    def list_collections(self) -> List[str]:
+        """
+        List all collections in the vector store.
+
+        Returns:
+            List of collection names
+        """
+        pass
+
+    @abstractmethod
+    def delete_collection(self, collection_name: str) -> bool:
+        """
+        Delete a collection from the vector store.
+
+        Args:
+            collection_name: Name of the collection to delete
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
     def get_stats(self) -> Dict[str, Any]:
         """
         Get collection statistics.

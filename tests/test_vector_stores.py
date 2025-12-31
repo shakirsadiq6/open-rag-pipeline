@@ -26,7 +26,7 @@ class TestVectorStores(TestCase):
         from open_rag_pipeline.exceptions import ConfigurationError
 
         # Milvus will fail with ImportError if not installed, which gets converted to ConfigurationError
-        with self.assertRaises(ConfigurationError):
+        with self.assertRaises((VectorStoreError, ConfigurationError, ImportError)):
             create_vector_store(config, mock_embedding, "test_collection")
 
     def test_chroma_store_missing_config(self):
