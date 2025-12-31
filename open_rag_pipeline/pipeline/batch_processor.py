@@ -50,6 +50,7 @@ class BatchProcessor:
         self,
         files: List[Path],
         show_progress: bool = True,
+        force: bool = False,
     ) -> Dict[str, any]:
         """
         Process files in batches.
@@ -57,6 +58,7 @@ class BatchProcessor:
         Args:
             files: List of file paths to process
             show_progress: Whether to show progress bar
+            force: Whether to force ingestion even if files haven't changed
 
         Returns:
             Dictionary with processing statistics
@@ -66,6 +68,7 @@ class BatchProcessor:
             "documents_loaded": 0,
             "chunks_created": 0,
             "chunks_stored": 0,
+            "skipped": 0,
             "errors": [],
         }
 
@@ -88,11 +91,14 @@ class BatchProcessor:
 
             for file_path in batch_files:
                 try:
-                    stats = self.pipeline.ingest_file(file_path)
-                    total_stats["files_processed"] += 1
-                    total_stats["documents_loaded"] += stats["documents_loaded"]
-                    total_stats["chunks_created"] += stats["chunks_created"]
-                    total_stats["chunks_stored"] += stats["chunks_stored"]
+                    stats = self.pipeline.ingest_file(file_path, force=force)
+                    if stats.get("skipped"):
+                        total_stats["skipped"] += 1
+                    else:
+                        total_stats["files_processed"] += 1
+                        total_stats["documents_loaded"] += stats["documents_loaded"]
+                        total_stats["chunks_created"] += stats["chunks_created"]
+                        total_stats["chunks_stored"] += stats["chunks_stored"]
                 except Exception as e:
                     error_msg = f"Error processing {file_path}: {str(e)}"
                     logger.error(error_msg)
@@ -105,6 +111,7 @@ class BatchProcessor:
         directory: Path,
         recursive: bool = True,
         show_progress: bool = True,
+        force: bool = False,
     ) -> Dict[str, any]:
         """
         Process directory files in batches.
@@ -113,6 +120,7 @@ class BatchProcessor:
             directory: Directory path
             recursive: Whether to search recursively
             show_progress: Whether to show progress bar
+            force: Whether to force ingestion even if files haven't changed
 
         Returns:
             Dictionary with processing statistics
@@ -132,11 +140,12 @@ class BatchProcessor:
                 "documents_loaded": 0,
                 "chunks_created": 0,
                 "chunks_stored": 0,
+                "skipped": 0,
                 "errors": [],
             }
 
         logger.info(f"Found {len(files)} file(s) to process in batches")
-        return self.process_files_in_batches(files, show_progress=show_progress)
+        return self.process_files_in_batches(files, show_progress=show_progress, force=force)
 
     def process_documents_in_batches(
         self,

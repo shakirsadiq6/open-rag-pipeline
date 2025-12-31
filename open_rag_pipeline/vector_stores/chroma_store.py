@@ -147,3 +147,34 @@ class ChromaStore(VectorStoreInterface):
             logger.warning(f"Failed to get Chroma stats: {str(e)}")
             return {"collection_name": self.collection_name, "num_entities": "unknown"}
 
+    def list_collections(self) -> List[str]:
+        """
+        List all collections in Chroma.
+
+        Returns:
+            List of collection names
+        """
+        try:
+            client = self.vectorstore._client
+            collections = client.list_collections()
+            return [c.name for c in collections]
+        except Exception as e:
+            raise VectorStoreError(f"Failed to list Chroma collections: {str(e)}") from e
+
+    def delete_collection(self, collection_name: str) -> bool:
+        """
+        Delete a collection from Chroma.
+
+        Args:
+            collection_name: Name of the collection to delete
+
+        Returns:
+            True if successful
+        """
+        try:
+            client = self.vectorstore._client
+            client.delete_collection(collection_name)
+            return True
+        except Exception as e:
+            raise VectorStoreError(f"Failed to delete Chroma collection {collection_name}: {str(e)}") from e
+

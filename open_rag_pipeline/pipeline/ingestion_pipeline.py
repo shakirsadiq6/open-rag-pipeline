@@ -21,6 +21,7 @@ from open_rag_pipeline.utils.file_utils import get_files_from_directory
 from open_rag_pipeline.utils.logging_utils import get_logger
 from open_rag_pipeline.vector_stores.base import VectorStoreInterface
 from open_rag_pipeline.vector_stores.factory import create_vector_store
+from open_rag_pipeline.pipeline.registry import HashRegistry
 
 logger = get_logger(__name__)
 
@@ -71,12 +72,16 @@ class IngestionPipeline:
         self.chunker = RecursiveTextSplitter(chunk_config)
         logger.info("Initialized text chunker")
 
-    def ingest_file(self, file_path: Path) -> Dict[str, int]:
+        # Initialize hash registry for incremental ingestion
+        self.registry = HashRegistry()
+
+    def ingest_file(self, file_path: Path, force: bool = False) -> Dict[str, int]:
         """
         Ingest a single file.
 
         Args:
             file_path: Path to the file
+            force: Whether to force ingestion even if the file hasn't changed
 
         Returns:
             Dictionary with ingestion statistics
@@ -85,6 +90,16 @@ class IngestionPipeline:
             PipelineError: If ingestion fails
         """
         try:
+            # Check if file has changed
+            if not force and not self.registry.has_changed(file_path):
+                logger.info(f"Skipping unchanged file: {file_path}")
+                return {
+                    "documents_loaded": 0,
+                    "chunks_created": 0,
+                    "chunks_stored": 0,
+                    "skipped": True,
+                }
+
             # Load document
             loader = get_loader(file_path)
             documents = loader.load()
@@ -98,10 +113,14 @@ class IngestionPipeline:
             ids = self.vector_store.add_documents(chunked_docs)
             logger.debug(f"Added {len(ids)} chunk(s) to vector store")
 
+            # Update registry
+            self.registry.update(file_path)
+
             return {
                 "documents_loaded": len(documents),
                 "chunks_created": len(chunked_docs),
                 "chunks_stored": len(ids),
+                "skipped": False,
             }
         except Exception as e:
             raise PipelineError(f"Failed to ingest file {file_path}: {str(e)}") from e
@@ -111,6 +130,7 @@ class IngestionPipeline:
         directory: Path,
         recursive: bool = True,
         show_progress: bool = True,
+        force: bool = False,
     ) -> Dict[str, any]:
         """
         Ingest all files from a directory.
@@ -119,6 +139,7 @@ class IngestionPipeline:
             directory: Directory path
             recursive: Whether to search recursively
             show_progress: Whether to show progress bar
+            force: Whether to force ingestion for all files
 
         Returns:
             Dictionary with ingestion statistics
@@ -141,6 +162,7 @@ class IngestionPipeline:
                 "documents_loaded": 0,
                 "chunks_created": 0,
                 "chunks_stored": 0,
+                "skipped": 0,
                 "errors": [],
             }
 
@@ -152,6 +174,7 @@ class IngestionPipeline:
             "documents_loaded": 0,
             "chunks_created": 0,
             "chunks_stored": 0,
+            "skipped": 0,
             "errors": [],
         }
 
@@ -159,11 +182,14 @@ class IngestionPipeline:
 
         for file_path in iterator:
             try:
-                stats = self.ingest_file(file_path)
-                total_stats["files_processed"] += 1
-                total_stats["documents_loaded"] += stats["documents_loaded"]
-                total_stats["chunks_created"] += stats["chunks_created"]
-                total_stats["chunks_stored"] += stats["chunks_stored"]
+                stats = self.ingest_file(file_path, force=force)
+                if stats.get("skipped"):
+                    total_stats["skipped"] += 1
+                else:
+                    total_stats["files_processed"] += 1
+                    total_stats["documents_loaded"] += stats["documents_loaded"]
+                    total_stats["chunks_created"] += stats["chunks_created"]
+                    total_stats["chunks_stored"] += stats["chunks_stored"]
             except Exception as e:
                 error_msg = f"Error processing {file_path}: {str(e)}"
                 logger.error(error_msg)

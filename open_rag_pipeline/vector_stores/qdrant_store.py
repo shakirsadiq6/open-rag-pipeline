@@ -164,3 +164,34 @@ class QdrantStore(VectorStoreInterface):
             logger.warning(f"Failed to get Qdrant stats: {str(e)}")
             return {"collection_name": self.collection_name, "num_entities": "unknown"}
 
+    def list_collections(self) -> List[str]:
+        """
+        List all collections in Qdrant.
+
+        Returns:
+            List of collection names
+        """
+        try:
+            client = self.vectorstore.client
+            collections = client.get_collections()
+            return [c.name for c in collections.collections]
+        except Exception as e:
+            raise VectorStoreError(f"Failed to list Qdrant collections: {str(e)}") from e
+
+    def delete_collection(self, collection_name: str) -> bool:
+        """
+        Delete a collection from Qdrant.
+
+        Args:
+            collection_name: Name of the collection to delete
+
+        Returns:
+            True if successful
+        """
+        try:
+            client = self.vectorstore.client
+            client.delete_collection(collection_name)
+            return True
+        except Exception as e:
+            raise VectorStoreError(f"Failed to delete Qdrant collection {collection_name}: {str(e)}") from e
+
